@@ -30,10 +30,10 @@ app.use(cookieParser());
 
 const SENSITIVE = ['password', 'accessToken', 'refreshToken', 'token', 'hash'];
 const maskBody = (obj) => {
-  if (!obj || typeof obj !== 'object') return obj;
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   return Object.fromEntries(
     Object.entries(obj).map(([k, v]) =>
-      SENSITIVE.includes(k) ? [k, '***'] : [k, typeof v === 'object' ? maskBody(v) : v]
+      SENSITIVE.includes(k) ? [k, '***'] : [k, v && typeof v === 'object' && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype ? maskBody(v) : v]
     )
   );
 };
