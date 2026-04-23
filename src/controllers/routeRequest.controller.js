@@ -1,14 +1,14 @@
 import RouteRequest from '../models/RouteRequest.js';
 import Bus from '../models/Bus.js';
 import { geocodeCity } from './bus.controller.js';
-import logger from '../config/logger.js';
 
 export const submitRequest = async (req, res) => {
-  const { fromCity, toCity, notes, contactEmail, arrivalTime } = req.body;
+  const { fromCity, toCity, name, notes, contactEmail, arrivalTime } = req.body;
   if (!fromCity || !toCity) return res.status(400).json({ message: 'fromCity and toCity required' });
   const rr = await RouteRequest.create({
     fromCity: fromCity.trim(),
     toCity: toCity.trim(),
+    name: (name || '').trim(),
     notes: (notes || '').trim(),
     contactEmail: (contactEmail || req.user?.email || '').trim(),
     arrivalTime: (arrivalTime || '').trim(),
@@ -33,8 +33,8 @@ export const updateRequestStatus = async (req, res) => {
       geocodeCity(rr.fromCity),
       geocodeCity(rr.toCity),
     ]);
-    const bus = await Bus.create({
-      name: `${rr.fromCity} - ${rr.toCity}`,
+    await Bus.create({
+      name: rr.name || `${rr.fromCity} - ${rr.toCity}`,
       fromCity: rr.fromCity,
       toCity: rr.toCity,
       fromCoords,
@@ -43,9 +43,6 @@ export const updateRequestStatus = async (req, res) => {
       frequency: 'Every day',
       status: 'approved',
     });
-    logger.info(`Route request ${rr._id} approved — created bus ${bus._id} (${rr.fromCity} → ${rr.toCity})`);
-  } else {
-    logger.info(`Route request ${rr._id} rejected — ${rr.fromCity} → ${rr.toCity}`);
   }
   res.json({ request: rr });
 };
