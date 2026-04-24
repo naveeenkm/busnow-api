@@ -1,8 +1,12 @@
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
 import { signAccessToken, signRefreshToken } from '../services/token.service.js';
-import logger from '../config/logger.js';
+import { registerUser, authenticateUser, refreshUserToken } from '../services/auth.service.js';
+import { logInfo, logWarn, logError } from '../config/logger.js';
+import {
+  HTTP_OK, HTTP_CREATED, HTTP_BAD_REQUEST, HTTP_UNAUTHORIZED, HTTP_SERVER_ERROR,
+  REFRESH_COOKIE_NAME, REFRESH_COOKIE_MAX_AGE, MIN_PASSWORD_LENGTH,
+  MSG_ALL_FIELDS_REQUIRED, MSG_PASSWORD_TOO_SHORT, MSG_EMAIL_PASSWORD_REQUIRED,
+  MSG_NO_REFRESH_TOKEN, MSG_INVALID_REFRESH_TOKEN, MSG_LOGGED_OUT, MSG_SERVER_ERROR,
+} from '../constants/index.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -15,76 +19,70 @@ const CLEAR_COOKIE_OPTS = {
 
 const REFRESH_COOKIE_OPTS = {
   ...CLEAR_COOKIE_OPTS,
-  maxAge: 30 * 24 * 60 * 60 * 1000,
+  maxAge: REFRESH_COOKIE_MAX_AGE,
 };
 
-const sendTokens = (res, user, status = 200) =>
+const sendTokens = (res, user, status = HTTP_OK) =>
   res
     .status(status)
-    .cookie('refreshToken', signRefreshToken(user), REFRESH_COOKIE_OPTS)
+    .cookie(REFRESH_COOKIE_NAME, signRefreshToken(user), REFRESH_COOKIE_OPTS)
     .json({ accessToken: signAccessToken(user), user });
 
 export const register = async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) return res.status(400).json({ message: 'All fields required' });
-  if (password.length < 6) return res.status(400).json({ message: 'Password must be 6+ chars' });
-  const exists = await User.findOne({ email: email.toLowerCase() });
-  if (exists) return res.status(409).json({ message: 'Email already registered' });
-  const hash = await bcrypt.hash(password, 10);
-  const user = await User.create({ name, email, password: hash });
-  sendTokens(res, user, 201);
+  try {
+    logInfo('Controller:register - Request received', { email: req.body.email });
+    const { name, email, password } = req.body;
+    if (!name || !email || !password) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_ALL_FIELDS_REQUIRED });
+    if (password.length < MIN_PASSWORD_LENGTH) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_PASSWORD_TOO_SHORT });
+    const result = await registerUser({ name, email, password });
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:register - Success', { userId: result.user._id });
+    sendTokens(res, result.user, HTTP_CREATED);
+  } catch (err) {
+    logError('Controller:register - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const login = async (req, res) => {
-  logger.info('--- LOGIN DEBUG ---', {
-    origin: req.headers.origin,
-    host: req.headers.host,
-    referer: req.headers.referer,
-    userAgent: req.headers['user-agent'],
-    cookieHeader: req.headers.cookie,
-    protocol: req.protocol,
-    secure: req.secure,
-    COOKIE_OPTS: REFRESH_COOKIE_OPTS,
-  });
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
-  if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
-  sendTokens(res, user);
+  try {
+    logInfo('Controller:login - Request received', { email: req.body.email });
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_EMAIL_PASSWORD_REQUIRED });
+    const result = await authenticateUser({ email, password });
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:login - Success', { userId: result.user._id });
+    sendTokens(res, result.user);
+  } catch (err) {
+    logError('Controller:login - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const refresh = async (req, res) => {
-  logger.info('--- REFRESH DEBUG ---', {
-    cookies: req.cookies,
-    rawCookieHeader: req.headers.cookie,
-    origin: req.headers.origin,
-    host: req.headers.host,
-    referer: req.headers.referer,
-    userAgent: req.headers['user-agent'],
-    protocol: req.protocol,
-    secure: req.secure,
-    isProd,
-    NODE_ENV: process.env.NODE_ENV,
-    CORS_ORIGIN: process.env.CORS_ORIGIN,
-    COOKIE_OPTS: REFRESH_COOKIE_OPTS,
-  });
-  const token = req.cookies?.refreshToken;
-  if (!token) return res.status(401).json({ message: 'No refresh token' });
   try {
-    const payload = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-    if (payload.type !== 'refresh') throw new Error();
-    const user = await User.findById(payload.sub).select('-password');
-    if (!user) return res.status(401).json({ message: 'User not found' });
-    sendTokens(res, user);
+    logInfo('Controller:refresh - Request received');
+    const token = req.cookies?.[REFRESH_COOKIE_NAME];
+    if (!token) {
+      logWarn('Controller:refresh - No refresh token');
+      return res.status(HTTP_UNAUTHORIZED).json({ message: MSG_NO_REFRESH_TOKEN });
+    }
+    const result = await refreshUserToken(token);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:refresh - Success', { userId: result.user._id });
+    sendTokens(res, result.user);
   } catch {
-    res.clearCookie('refreshToken', CLEAR_COOKIE_OPTS).status(401).json({ message: 'Invalid or expired refresh token' });
+    logWarn('Controller:refresh - Invalid or expired refresh token');
+    res.clearCookie(REFRESH_COOKIE_NAME, CLEAR_COOKIE_OPTS).status(HTTP_UNAUTHORIZED).json({ message: MSG_INVALID_REFRESH_TOKEN });
   }
 };
 
 export const logout = (_req, res) => {
-  res.clearCookie('refreshToken', CLEAR_COOKIE_OPTS).json({ message: 'Logged out' });
+  logInfo('Controller:logout - User logged out');
+  res.clearCookie(REFRESH_COOKIE_NAME, CLEAR_COOKIE_OPTS).json({ message: MSG_LOGGED_OUT });
 };
 
-export const me = async (req, res) => res.json({ user: req.user });
+export const me = async (req, res) => {
+  logInfo('Controller:me - Request received', { userId: req.user._id });
+  res.json({ user: req.user });
+};

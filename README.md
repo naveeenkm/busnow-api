@@ -37,8 +37,10 @@ npm run dev            # starts on http://localhost:5000
 src/
 ├── config/
 │   ├── db.js          # Mongoose connection
-│   └── logger.js      # Winston logger (console + rotating files)
-├── controllers/
+│   └── logger.js      # Winston logger (helpers + console + rotating files)
+├── constants/
+│   └── index.js       # HTTP codes, messages, config values
+├── controllers/       # Thin layer — request/response only
 │   ├── auth.controller.js
 │   ├── bus.controller.js
 │   ├── routeRequest.controller.js
@@ -58,9 +60,14 @@ src/
 │   ├── routeRequest.routes.js
 │   ├── user.routes.js
 │   └── adminUser.routes.js
-├── services/
-│   ├── seed.service.js   # Admin seeder
-│   └── token.service.js  # JWT sign helpers
+├── services/          # Business logic + DB operations
+│   ├── auth.service.js
+│   ├── bus.service.js
+│   ├── routeRequest.service.js
+│   ├── user.service.js
+│   ├── adminUser.service.js
+│   ├── seed.service.js
+│   └── token.service.js
 └── server.js
 logs/                      # Auto-created — rotating log files
 ```
@@ -69,7 +76,7 @@ logs/                      # Auto-created — rotating log files
 
 ## Logging
 
-Uses **Winston** with three transports:
+Uses **Winston** with structured helper functions and three transports:
 
 | Transport       | Level   | Output                                  |
 |-----------------|---------|-----------------------------------------|
@@ -77,13 +84,29 @@ Uses **Winston** with three transports:
 | `error-*.log`   | error   | `logs/error-YYYY-MM-DD.log` (14 days)   |
 | `combined-*.log`| all     | `logs/combined-YYYY-MM-DD.log` (14 days)|
 
-Log levels used across the codebase:
+### Log Helpers
 
-- `http` — every incoming request (via Morgan)
-- `info` — server start, DB connect, seed events, route approvals
+```js
+import { logInfo, logWarn, logError, logDebug, logHttp } from './config/logger.js';
+
+logInfo('Controller:login - Success', { userId, email });
+logWarn('Middleware:auth - No token', { method, url });
+logError('Server:start - Failed', { stack, message });
+logDebug('Controller:geocodeCity - Geocoded', { lat, lon });
+logHttp('GET /api/buses 200 12ms', { snippet });
+```
+
+### Log Format
+
+All logs follow the pattern: `[Category] Context:function - Message { meta }`
+
+### Log Levels
+
+- `http` — every incoming request
+- `info` — server start, DB connect, seed events, auth success, logout
 - `warn` — auth failures, 404s, CORS blocks, geocode misses
 - `error` — unhandled errors, geocode fetch failures
-- `debug` — geocode success coordinates (verbose, off by default)
+- `debug` — geocode coordinates (verbose, off by default)
 
 To enable debug logs: set `LOG_LEVEL=debug` in `.env`.
 

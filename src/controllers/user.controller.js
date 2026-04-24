@@ -1,70 +1,107 @@
-import RideHistory from '../models/RideHistory.js';
-import Bus from '../models/Bus.js';
-import User from '../models/User.js';
-import RouteRequest from '../models/RouteRequest.js';
+import { getRideHistory, addRideHistory, getUserFavorites, addUserFavorite, removeUserFavorite, updateUserProfile, deleteUserAccount } from '../services/user.service.js';
+import { getRouteRequestsByUser } from '../services/routeRequest.service.js';
+import { logInfo, logError } from '../config/logger.js';
+import {
+  HTTP_CREATED, HTTP_BAD_REQUEST, HTTP_SERVER_ERROR,
+  MSG_FROM_TO_REQUIRED, MSG_SERVER_ERROR,
+} from '../constants/index.js';
 
 export const getHistory = async (req, res) => {
-  const history = await RideHistory.find({ user: req.user._id })
-    .sort({ createdAt: -1 })
-    .populate('bus');
-  res.json({ history });
+  try {
+    logInfo('Controller:getHistory - Request received', { userId: req.user._id });
+    const history = await getRideHistory(req.user._id);
+    logInfo('Controller:getHistory - Success', { count: history.length });
+    res.json({ history });
+  } catch (err) {
+    logError('Controller:getHistory - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const addHistory = async (req, res) => {
-  const { busId } = req.body;
-  const bus = await Bus.findById(busId);
-  if (!bus) return res.status(404).json({ message: 'Bus not found' });
-  const entry = await RideHistory.create({
-    user: req.user._id,
-    bus: bus._id,
-    fromCity: bus.fromCity,
-    toCity: bus.toCity,
-  });
-  res.status(201).json({ entry });
+  try {
+    logInfo('Controller:addHistory - Request received', { userId: req.user._id, busId: req.body.busId });
+    const result = await addRideHistory(req.user._id, req.body.busId);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:addHistory - Success');
+    res.status(HTTP_CREATED).json({ entry: result.entry });
+  } catch (err) {
+    logError('Controller:addHistory - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const getFavorites = async (req, res) => {
-  res.json({ favorites: req.user.favorites });
+  try {
+    logInfo('Controller:getFavorites - Request received', { userId: req.user._id });
+    const favorites = await getUserFavorites(req.user);
+    logInfo('Controller:getFavorites - Success', { count: favorites.length });
+    res.json({ favorites });
+  } catch (err) {
+    logError('Controller:getFavorites - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const addFavorite = async (req, res) => {
-  const { from, to } = req.body;
-  if (!from || !to) return res.status(400).json({ message: 'from and to required' });
-  const user = await User.findById(req.user._id);
-  user.favorites.push({ from: from.trim(), to: to.trim() });
-  await user.save();
-  res.status(201).json({ favorites: user.favorites });
+  try {
+    const { from, to } = req.body;
+    logInfo('Controller:addFavorite - Request received', { userId: req.user._id, from, to });
+    if (!from || !to) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_FROM_TO_REQUIRED });
+    const favorites = await addUserFavorite(req.user._id, { from, to });
+    logInfo('Controller:addFavorite - Success');
+    res.status(HTTP_CREATED).json({ favorites });
+  } catch (err) {
+    logError('Controller:addFavorite - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const removeFavorite = async (req, res) => {
-  const user = await User.findById(req.user._id);
-  user.favorites.id(req.params.id)?.deleteOne();
-  await user.save();
-  res.json({ favorites: user.favorites });
+  try {
+    logInfo('Controller:removeFavorite - Request received', { userId: req.user._id, favoriteId: req.params.id });
+    const favorites = await removeUserFavorite(req.user._id, req.params.id);
+    logInfo('Controller:removeFavorite - Success');
+    res.json({ favorites });
+  } catch (err) {
+    logError('Controller:removeFavorite - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const getMyRequests = async (req, res) => {
-  const requests = await RouteRequest.find({ requestedBy: req.user._id }).sort({ createdAt: -1 });
-  res.json({ requests });
+  try {
+    logInfo('Controller:getMyRequests - Request received', { userId: req.user._id });
+    const requests = await getRouteRequestsByUser(req.user._id);
+    logInfo('Controller:getMyRequests - Success', { count: requests.length });
+    res.json({ requests });
+  } catch (err) {
+    logError('Controller:getMyRequests - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const updateProfile = async (req, res) => {
-  const { name, currentPassword, newPassword } = req.body;
-  const user = await User.findById(req.user._id).select('+password');
-  if (name) user.name = name.trim();
-  if (newPassword) {
-    if (!currentPassword) return res.status(400).json({ message: 'Current password required' });
-    const bcrypt = await import('bcryptjs');
-    const ok = await bcrypt.default.compare(currentPassword, user.password);
-    if (!ok) return res.status(401).json({ message: 'Current password is incorrect' });
-    if (newPassword.length < 6) return res.status(400).json({ message: 'Password must be 6+ chars' });
-    user.password = await bcrypt.default.hash(newPassword, 10);
+  try {
+    logInfo('Controller:updateProfile - Request received', { userId: req.user._id });
+    const result = await updateUserProfile(req.user._id, req.body);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:updateProfile - Success', { userId: req.user._id });
+    res.json({ user: result.user });
+  } catch (err) {
+    logError('Controller:updateProfile - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
   }
-  await user.save();
-  res.json({ user: { _id: user._id, name: user.name, email: user.email, role: user.role } });
 };
 
 export const deleteAccount = async (req, res) => {
-  await User.findByIdAndDelete(req.user._id);
-  res.json({ ok: true });
+  try {
+    logInfo('Controller:deleteAccount - Request received', { userId: req.user._id });
+    await deleteUserAccount(req.user._id);
+    logInfo('Controller:deleteAccount - Success', { userId: req.user._id });
+    res.json({ ok: true });
+  } catch (err) {
+    logError('Controller:deleteAccount - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };

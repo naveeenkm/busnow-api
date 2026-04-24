@@ -34,4 +34,13 @@ const logger = winston.createLogger({
   transports,
 });
 
+const log = (level, category, message, meta = {}) =>
+  logger[level](`[${category}] ${message}`, { category, ...meta });
+
+export const logInfo = (message, meta = {}) => log('info', 'Info', message, meta);
+export const logWarn = (message, meta = {}) => log('warn', 'Warn', message, meta);
+export const logError = (message, meta = {}) => log('error', 'Error', message, meta);
+export const logDebug = (message, meta = {}) => log('debug', 'Debug', message, meta);
+export const logHttp = (message, meta = {}) => log('http', 'Http', message, meta);
+
 export default logger;

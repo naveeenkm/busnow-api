@@ -1,48 +1,53 @@
-import RouteRequest from '../models/RouteRequest.js';
-import Bus from '../models/Bus.js';
-import { geocodeCity } from './bus.controller.js';
+import { createRouteRequest, getAllRouteRequests, updateRouteRequestStatus } from '../services/routeRequest.service.js';
+import { logInfo, logError } from '../config/logger.js';
+import {
+  HTTP_CREATED, HTTP_BAD_REQUEST, HTTP_NOT_FOUND, HTTP_SERVER_ERROR,
+  VALID_REQUEST_STATUSES,
+  MSG_CITIES_REQUIRED, MSG_INVALID_STATUS, MSG_REQUEST_NOT_FOUND, MSG_SERVER_ERROR,
+} from '../constants/index.js';
 
 export const submitRequest = async (req, res) => {
-  const { fromCity, toCity, name, notes, contactEmail, arrivalTime } = req.body;
-  if (!fromCity || !toCity) return res.status(400).json({ message: 'fromCity and toCity required' });
-  const rr = await RouteRequest.create({
-    fromCity: fromCity.trim(),
-    toCity: toCity.trim(),
-    name: (name || '').trim(),
-    notes: (notes || '').trim(),
-    contactEmail: (contactEmail || req.user?.email || '').trim(),
-    arrivalTime: (arrivalTime || '').trim(),
-    requestedBy: req.user?._id || null,
-  });
-  res.status(201).json({ request: rr });
+  try {
+    const { fromCity, toCity, name, notes, contactEmail, arrivalTime } = req.body;
+    logInfo('Controller:submitRequest - Request received', { fromCity, toCity });
+    if (!fromCity || !toCity) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_CITIES_REQUIRED });
+    const rr = await createRouteRequest({
+      fromCity, toCity, name, notes,
+      contactEmail: contactEmail || req.user?.email || '',
+      arrivalTime,
+      requestedBy: req.user?._id,
+    });
+    logInfo('Controller:submitRequest - Success', { requestId: rr._id });
+    res.status(HTTP_CREATED).json({ request: rr });
+  } catch (err) {
+    logError('Controller:submitRequest - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const listRequests = async (_req, res) => {
-  const requests = await RouteRequest.find().sort({ createdAt: -1 }).populate('requestedBy', 'name email');
-  res.json({ requests });
+  try {
+    logInfo('Controller:listRequests - Request received');
+    const requests = await getAllRouteRequests();
+    logInfo('Controller:listRequests - Success', { count: requests.length });
+    res.json({ requests });
+  } catch (err) {
+    logError('Controller:listRequests - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const updateRequestStatus = async (req, res) => {
-  const { status, rejectionReason } = req.body;
-  if (!['approved', 'rejected'].includes(status)) return res.status(400).json({ message: 'Invalid status' });
-  const update = { status, rejectionReason: status === 'rejected' ? (rejectionReason || '').trim() : '' };
-  const rr = await RouteRequest.findByIdAndUpdate(req.params.id, update, { new: true });
-  if (!rr) return res.status(404).json({ message: 'Request not found' });
-  if (status === 'approved') {
-    const [fromCoords, toCoords] = await Promise.all([
-      geocodeCity(rr.fromCity),
-      geocodeCity(rr.toCity),
-    ]);
-    await Bus.create({
-      name: rr.name || `${rr.fromCity} - ${rr.toCity}`,
-      fromCity: rr.fromCity,
-      toCity: rr.toCity,
-      fromCoords,
-      toCoords,
-      arrivalTime: rr.arrivalTime || '',
-      frequency: 'Every day',
-      status: 'approved',
-    });
+  try {
+    const { status, rejectionReason } = req.body;
+    logInfo('Controller:updateRequestStatus - Request received', { requestId: req.params.id, status });
+    if (!VALID_REQUEST_STATUSES.includes(status)) return res.status(HTTP_BAD_REQUEST).json({ message: MSG_INVALID_STATUS });
+    const rr = await updateRouteRequestStatus(req.params.id, { status, rejectionReason });
+    if (!rr) return res.status(HTTP_NOT_FOUND).json({ message: MSG_REQUEST_NOT_FOUND });
+    logInfo('Controller:updateRequestStatus - Success', { requestId: req.params.id, status });
+    res.json({ request: rr });
+  } catch (err) {
+    logError('Controller:updateRequestStatus - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
   }
-  res.json({ request: rr });
 };

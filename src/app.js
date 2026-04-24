@@ -6,7 +6,8 @@ import mongoose from 'mongoose';
 import { connectDB } from './config/db.js';
 import { seedAdminAndDemo } from './services/seed.service.js';
 import { errorHandler, notFound } from './middleware/error.js';
-import logger from './config/logger.js';
+import { logWarn, logHttp } from './config/logger.js';
+import { HTTP_OK, HTTP_SERVICE_UNAVAILABLE } from './constants/index.js';
 
 import authRoutes from './routes/auth.routes.js';
 import busRoutes from './routes/bus.routes.js';
@@ -20,7 +21,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.tri
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) return cb(null, true);
-    logger.warn(`CORS blocked origin: ${origin}`);
+    logWarn('App:cors - Blocked origin', { origin });
     return cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -45,7 +46,7 @@ app.use((req, res, next) => {
     const ms = Date.now() - start;
     const preview = JSON.stringify(maskBody(body));
     const snippet = preview.length > 80 ? preview.slice(0, 80) + '…}' : preview;
-    logger.http(`${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms — ${snippet}`);
+    logHttp(`${req.method} ${req.originalUrl} ${res.statusCode} ${ms}ms`, { snippet });
     return originalJson(body);
   };
   next();
@@ -57,7 +58,7 @@ app.get('/api/health-check', (_req, res) => {
   const dbState = mongoose.connection.readyState;
   const db = dbState === 1 ? 'connected' : dbState === 2 ? 'connecting' : 'disconnected';
   const status = dbState === 1 ? 'healthy' : 'unhealthy';
-  res.status(dbState === 1 ? 200 : 503).json({
+  res.status(dbState === 1 ? HTTP_OK : HTTP_SERVICE_UNAVAILABLE).json({
     status,
     db,
     uptime: Math.floor(process.uptime()),

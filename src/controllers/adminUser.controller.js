@@ -1,15 +1,28 @@
-import User from '../models/User.js';
+import { getAllUsers, deleteUserById } from '../services/adminUser.service.js';
+import { logInfo, logError } from '../config/logger.js';
+import { HTTP_SERVER_ERROR, MSG_SERVER_ERROR } from '../constants/index.js';
 
 export const listUsers = async (_req, res) => {
-  const users = await User.find().sort({ createdAt: -1 });
-  res.json({ users });
+  try {
+    logInfo('Controller:listUsers - Request received');
+    const users = await getAllUsers();
+    logInfo('Controller:listUsers - Success', { count: users.length });
+    res.json({ users });
+  } catch (err) {
+    logError('Controller:listUsers - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
+  }
 };
 
 export const deleteUser = async (req, res) => {
-  if (req.user._id.toString() === req.params.id) {
-    return res.status(400).json({ message: "You can't delete yourself" });
+  try {
+    logInfo('Controller:deleteUser - Request received', { targetId: req.params.id });
+    const result = await deleteUserById(req.user._id.toString(), req.params.id);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    logInfo('Controller:deleteUser - Success', { targetId: req.params.id });
+    res.json({ ok: true });
+  } catch (err) {
+    logError('Controller:deleteUser - Failed', { error: err.message, stack: err.stack });
+    res.status(HTTP_SERVER_ERROR).json({ message: MSG_SERVER_ERROR });
   }
-  const u = await User.findByIdAndDelete(req.params.id);
-  if (!u) return res.status(404).json({ message: 'User not found' });
-  res.json({ ok: true });
 };
