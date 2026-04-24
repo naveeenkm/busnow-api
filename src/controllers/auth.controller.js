@@ -5,12 +5,16 @@ import { signAccessToken, signRefreshToken } from '../services/token.service.js'
 
 const isCrossSite = process.env.CORS_ORIGIN && process.env.NODE_ENV === 'production';
 
-const REFRESH_COOKIE_OPTS = {
+const CLEAR_COOKIE_OPTS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: isCrossSite ? 'none' : 'lax',
-  maxAge: 30 * 24 * 60 * 60 * 1000,
   path: '/',
+};
+
+const REFRESH_COOKIE_OPTS = {
+  ...CLEAR_COOKIE_OPTS,
+  maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
 const sendTokens = (res, user, status = 200) =>
@@ -50,12 +54,12 @@ export const refresh = async (req, res) => {
     if (!user) return res.status(401).json({ message: 'User not found' });
     sendTokens(res, user);
   } catch {
-    res.clearCookie('refreshToken').status(401).json({ message: 'Invalid or expired refresh token' });
+    res.clearCookie('refreshToken', CLEAR_COOKIE_OPTS).status(401).json({ message: 'Invalid or expired refresh token' });
   }
 };
 
 export const logout = (_req, res) => {
-  res.clearCookie('refreshToken', { path: '/' }).json({ message: 'Logged out' });
+  res.clearCookie('refreshToken', CLEAR_COOKIE_OPTS).json({ message: 'Logged out' });
 };
 
 export const me = async (req, res) => res.json({ user: req.user });
