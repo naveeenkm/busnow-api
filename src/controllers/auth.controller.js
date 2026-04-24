@@ -45,6 +45,11 @@ export const login = async (req, res) => {
 };
 
 export const refresh = async (req, res) => {
+  console.log('--- REFRESH DEBUG ---');
+  console.log('cookies:', req.cookies);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('isProd:', isProd);
+  console.log('COOKIE_OPTS:', REFRESH_COOKIE_OPTS);
   const token = req.cookies?.refreshToken;
   if (!token) return res.status(401).json({ message: 'No refresh token' });
   try {
