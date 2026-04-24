@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { signAccessToken, signRefreshToken } from '../services/token.service.js';
+import logger from '../config/logger.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -35,6 +36,16 @@ export const register = async (req, res) => {
 };
 
 export const login = async (req, res) => {
+  logger.debug('--- LOGIN DEBUG ---', {
+    origin: req.headers.origin,
+    host: req.headers.host,
+    referer: req.headers.referer,
+    userAgent: req.headers['user-agent'],
+    cookieHeader: req.headers.cookie,
+    protocol: req.protocol,
+    secure: req.secure,
+    COOKIE_OPTS: REFRESH_COOKIE_OPTS,
+  });
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
   const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
@@ -45,11 +56,20 @@ export const login = async (req, res) => {
 };
 
 export const refresh = async (req, res) => {
-  console.log('--- REFRESH DEBUG ---');
-  console.log('cookies:', req.cookies);
-  console.log('NODE_ENV:', process.env.NODE_ENV);
-  console.log('isProd:', isProd);
-  console.log('COOKIE_OPTS:', REFRESH_COOKIE_OPTS);
+  logger.debug('--- REFRESH DEBUG ---', {
+    cookies: req.cookies,
+    rawCookieHeader: req.headers.cookie,
+    origin: req.headers.origin,
+    host: req.headers.host,
+    referer: req.headers.referer,
+    userAgent: req.headers['user-agent'],
+    protocol: req.protocol,
+    secure: req.secure,
+    isProd,
+    NODE_ENV: process.env.NODE_ENV,
+    CORS_ORIGIN: process.env.CORS_ORIGIN,
+    COOKIE_OPTS: REFRESH_COOKIE_OPTS,
+  });
   const token = req.cookies?.refreshToken;
   if (!token) return res.status(401).json({ message: 'No refresh token' });
   try {
