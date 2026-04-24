@@ -3,12 +3,12 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { signAccessToken, signRefreshToken } from '../services/token.service.js';
 
-const isCrossSite = !!process.env.CORS_ORIGIN;
+const isProd = process.env.NODE_ENV === 'production';
 
 const CLEAR_COOKIE_OPTS = {
   httpOnly: true,
-  secure: isCrossSite || process.env.NODE_ENV === 'production',
-  sameSite: isCrossSite ? 'none' : 'lax',
+  secure: isProd,
+  sameSite: isProd ? 'none' : 'lax',
   path: '/',
 };
 
