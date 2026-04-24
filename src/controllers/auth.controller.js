@@ -36,7 +36,7 @@ export const register = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-  logger.debug('--- LOGIN DEBUG ---', {
+  logger.info('--- LOGIN DEBUG ---', {
     origin: req.headers.origin,
     host: req.headers.host,
     referer: req.headers.referer,
@@ -56,7 +56,7 @@ export const login = async (req, res) => {
 };
 
 export const refresh = async (req, res) => {
-  logger.debug('--- REFRESH DEBUG ---', {
+  logger.info('--- REFRESH DEBUG ---', {
     cookies: req.cookies,
     rawCookieHeader: req.headers.cookie,
     origin: req.headers.origin,
